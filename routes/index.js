@@ -1,103 +1,139 @@
-var express = require('express');
+var express = require("express");
 var router = express.Router();
+const path = require("path");
+const fs = require("fs");
 
+const BookCollection = require("../models/bookSchema");
+const { checkPrice } = require("../utils/middleware");
+const upload = require("../utils/multer");
+const {sendMail}=require("../utils/sendmail");
 
-/* GET home page. */
-router.get('/', function (req, res, next) {
-  res.render('home');
+router.get("/", function (req, res, next) {
+    res.render("home");
 });
 
-router.get('/Create-Book', function (req, res, next) {
-  res.render('Createbook', { title: "Create Book" });
-});
-
-
-router.get('/library', function (req, res, next) {
-  // res.send('library');
-  let data = [{
-    title: "Physics",
-    desc: "A comprehensive guide to the fundamentals of physics, covering classical mechanics, electromagnetism, and thermodynamics."
-  }, {
-    title: "Organic Chemistry",
-    desc: "An in-depth look at the principles of organic chemistry, including reaction mechanisms and the structure of organic compounds."
-  },
-  {
-    title: "Advanced Mathematics",
-    desc: "Explores advanced topics in mathematics such as calculus, linear algebra, and differential equations."
-  },
-  {
-    title: "Quantum Physics",
-    desc: "An introduction to quantum mechanics, discussing wave-particle duality, the uncertainty principle, and quantum states."
-  },
-  {
-    title: "Physical Chemistry",
-    desc: "Combines principles of physics and chemistry to understand the physical properties of molecules and their reactions."
-  },
-  {
-    title: "Discrete Mathematics",
-    desc: "Covers topics in discrete mathematics including logic, set theory, combinatorics, and graph theory."
-  },
-  {
-    title: "Thermodynamics",
-    desc: "Examines the laws of thermodynamics and statistical methods to study the behavior of systems in thermal equilibrium."
-  },
-  {
-    title: "Inorganic Chemistry",
-    desc: "Focuses on the properties and behavior of inorganic compounds, with a special emphasis on transition metals and coordination chemistry."
-  },
-  {
-    title: "Linear Algebra",
-    desc: "Discusses vector spaces, linear transformations, matrices, and their applications in various fields."
-  },
-  {
-    title: "Electromagnetism",
-    desc: "Studies electric and magnetic fields, their interactions, and applications in modern technology."
-  },
-  {
-    title: "Number Theory",
-    desc: "An introduction to number theory, including prime numbers, divisibility, and modular arithmetic."
-  },
-  {
-    title: "Classical Mechanics",
-    desc: "Details the motion of bodies under the influence of forces, with applications in engineering and physics."
-  }
-  ];
-  res.render('library', { title: "Library", data })
-});
-
-router.post('/library', function (req, res, next) {
-  let data = [
-    {
-      title: "Physics",
-      desc: "A comprehensive guide to the fundamentals of physics, covering classical mechanics, electromagnetism, and thermodynamics."
-    },
-    {
-      title: "Organic Chemistry",
-      desc: "An in-depth look at the principles of organic chemistry, including reaction mechanisms and the structure of organic compounds."
+router.get("/library", async function (req, res, next) {
+    try {
+        const books = await BookCollection.find({});
+        res.render("library", { books: books });
+    } catch (error) {
+        console.log(error);
+        res.send(error);
     }
-  ];
-  res.render('library', {title: "Library", data})
-})
-
-
-
-router.get('/details', function (req, res, next) {
-  res.render('details', { title: "Book Details/Update" });
 });
 
-router.get('/About', function (req, res, next) {
-  let data = [{
-    heading: "Welcome to Bookstore",
-    content: "Welcome to Bookstore, where the love for books and community converge to create an exceptional literary experience. Established in 204, we have dedicated ourselves to nurturing the joy of reading and fostering a vibrant community of book lovers."
-  },
-  {
-    heading: "Our Story",
-    content: "Our story began with a simple dream: to create a sanctuary for readers and writers alike. From our modest beginnings as a small, independent bookstore, we have grown into a cherished destination for book enthusiasts. Thanks to the unwavering support of our loyal customers and the commitment of our passionate team, Bookstore has become more than just a bookstore — it’s a community hub where stories come to life."
-  }
-  ]
-  res.render('about', { title: "About page", data });
+router.get("/about", function (req, res, next) {
+    res.render("about");
 });
 
+router.get("/create-book", function (req, res, next) {
+    res.render("createbook");
+});
 
+router.post(
+    "/create-book",
+    upload.single("poster"),
+    checkPrice,
+    async function (req, res, next) {
+        try {
+            const newBook = await new BookCollection({
+                ...req.body,
+                poster: req.file.filename,
+            });
+
+            await newBook.save();
+            res.redirect("/library");
+        } catch (error) {
+            console.log(error);
+            res.send(error);
+        }
+    }
+);
+
+// router.post("/create-book", checkPrice, async function (req, res, next) {
+//     upload(req, res, async function (err) {
+//         if (err) {
+//             console.log(err);
+//             res.json(err);
+//         } else {
+//             // ------------------------
+//             try {
+//                 const newBook = await new BookCollection({
+//                     ...req.body,
+//                     poster: req.file.filename,
+//                 });
+
+//                 await newBook.save();
+//                 res.redirect("/library");
+//             } catch (error) {
+//                 console.log(error);
+//                 res.send(error);
+//             }
+
+//             // --------------------
+//         }
+//     });
+// });
+
+router.get("/details/:id", async function (req, res, next) {
+    try {
+        const book = await BookCollection.findById(req.params.id);
+        res.render("detailsbook", { book: book });
+    } catch (error) {
+        console.log(error);
+        res.send(error);
+    }
+});
+
+router.get("/update-book/:id", async function (req, res, next) {
+    try {
+        const book = await BookCollection.findById(req.params.id);
+        res.render("updatebook", { book: book });
+    } catch (error) {
+        console.log(error);
+        res.send(error);
+    }
+});
+
+router.post(
+    "/update-book/:id",
+    upload.single("poster"),
+    async function (req, res, next) {
+        try {
+            const updatedBook = { ...req.body };
+            if (req.file) {
+                updatedBook.poster = req.file.filename;
+                fs.unlinkSync(
+                    path.join(
+                        __dirname,
+                        `../public/images/${req.body.oldimage}`
+                    )
+                );
+            }
+            await BookCollection.findByIdAndUpdate(req.params.id, updatedBook);
+            res.redirect(`/details/${req.params.id}`);
+        } catch (error) {
+            console.log(error);
+            res.send(error);
+        }
+    }
+);
+
+router.get("/delete-book/:id", async function (req, res, next) {
+    try {
+        const book = await BookCollection.findByIdAndDelete(req.params.id);
+
+        fs.unlinkSync(path.join(__dirname, `../public/images/${book.poster}`));
+
+        res.redirect("/library");
+    } catch (error) {
+        console.log(error);
+        res.send(error);
+    }
+});
+
+router.post("/send-mail", function (req, res, next) {
+    sendMail(req, res);
+});
 
 module.exports = router;
